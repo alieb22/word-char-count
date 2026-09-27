@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Character Count</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1f1f1f;
+      --muted: #6b6b6b;
+      --card: #f4f5f7;
+      --accent: #2b579a;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1f1f1f; --fg: #f0f0f0; --muted: #a0a0a0; --card: #2b2b2b; --accent: #7fa7e0; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px;
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg); color: var(--fg);
+    }
+    #scope { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+    .stat { background: var(--card); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+    .stat .n { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .stat .l { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .stat.primary .n { color: var(--accent); }
+    #err { color: #c42b1c; font-size: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="scope">Loading…</div>
+  <div class="stat primary"><div class="n" id="chars">–</div><div class="l">Characters (with spaces)</div></div>
+  <div class="stat"><div class="n" id="charsNoSpace">–</div><div class="l">Characters (no spaces)</div></div>
+  <div class="stat"><div class="n" id="words">–</div><div class="l">Words</div></div>
+  <div id="err"></div>
+
+  <script>
+    const fmt = n => n.toLocaleString();
+
+    // Mirror Word's Word Count dialog: paragraph marks, cell/row markers and
+    // other control characters are not counted as characters.
+    function stats(text) {
+      const clean = text.replace(/[\r\n\u0007\u000b\u000c\u0001-\u0008\u000e-\u001f]/g, "");
+      const chars = Array.from(clean);
+      const noSpace = chars.filter(c => !/\s/.test(c)).length;
+      const words = text.split(/[\s\u0007\u000b\u000c]+/).filter(w => /[^\s]/.test(w)).length;
+      return { chars: chars.length, noSpace, words };
+    }
+
+    let pending = null;
+    function scheduleUpdate() {
+      clearTimeout(pending);
+      pending = setTimeout(update, 120);
+    }
+
+    async function update() {
+      try {
+        await Word.run(async ctx => {
+          const sel = ctx.document.getSelection();
+          sel.load("text,isEmpty");
+          await ctx.sync();
+
+          let text = sel.text, scope = "Selection";
+          if (sel.isEmpty || text.length === 0) {
+            const body = ctx.document.body;
+            body.load("text");
+            await ctx.sync();
+            text = body.text;
+            scope = "Whole document";
+          }
+          const s = stats(text);
+          document.getElementById("scope").textContent = scope;
+          document.getElementById("chars").textContent = fmt(s.chars);
+          document.getElementById("charsNoSpace").textContent = fmt(s.noSpace);
+          document.getElementById("words").textContent = fmt(s.words);
+          document.getElementById("err").textContent = "";
+        });
+      } catch (e) {
+        document.getElementById("err").textContent = String(e && e.message || e);
+      }
+    }
+
+    Office.onReady(info => {
+      if (info.host !== Office.HostType.Word) return;
+      Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, scheduleUpdate);
+      update();
+    });
+  </script>
+</body>
+</html>
